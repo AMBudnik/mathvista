@@ -1,0 +1,19 @@
+{
+  "name": "mathvista",
+  "version": "1.0.0",
+  "description": "interactive function analyzer",
+  "scripts": {
+    "start": "parcel src/index.html --open",
+    "build": "parcel build src/index.html --public-url ./"
+  },
+  "keywords": ["interactive", "math", "charting", "analysis"],
+  "author": "AMBUdnik",
+  "license": "MIT",
+  "devDependencies": {
+    "parcel": "^2.8.3"
+  },
+  "dependencies": {
+    "chart.js": "^4.3.0",
+    "mathjs": "^11.8.0"
+  }
+}
