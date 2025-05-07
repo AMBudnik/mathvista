@@ -58,13 +58,34 @@ function validateRange(xMin, xMax) {
 }
 
 function generatePlotData(parsed, xMin, xMax) {
-  const values = [];
-  for (let x = xMin; x <= xMax; x += 0.1) {
-      values.push({ x, y: parsed.evaluate({ x }) });
-  }
-  return values;
-}
+    const values = [];
+    const threshold = 1000; // Define a threshold to avoid very large values
 
+    for (let x = xMin; x <= xMax; x += 0.1) {
+        let y;
+
+        // Skip plotting at x = 0 for functions like 1/x
+        if (x === 0) {
+            values.push({ x, y: null });
+            continue;
+        }
+
+        try {
+            y = parsed.evaluate({ x });
+        } catch {
+            y = null;
+        }
+
+        // If the result is too large (approaching infinity) or NaN, skip plotting
+        if (typeof y !== 'number' || !isFinite(y) || Math.abs(y) > threshold) {
+            values.push({ x, y: null });
+        } else {
+            values.push({ x, y });
+        }
+    }
+    return values;
+}
+  
 function renderChart(expr, values, zeros) {
   const ctx = document.getElementById('function-chart').getContext('2d');
 
@@ -140,26 +161,36 @@ function displayZeros(parsed, zeros, showZeros) {
   }
 }
 
-//counting zeros
+// Counting zeros
 function findZeros(expr, xMin, xMax) {
-  const zeros = [];
-  const step = 0.1;
-  const precision = 0.0001;
+    const zeros = [];
+    const step = 0.1;
+    const precision = 0.0001;
 
-  for (let x = xMin; x < xMax; x += step) {
-      const [x1, x2] = [x, x + step];
-      const [y1, y2] = [expr.evaluate({ x: x1 }), expr.evaluate({ x: x2 })];
+    for (let x = xMin; x < xMax; x += step) {
+        // Skip regions where the function is undefined (e.g., near x = 0 for 1/x)
+        if (Math.abs(x) < precision) continue;
 
-      if (y1 * y2 <= 0) {
-          const zero = findZeroInInterval(expr, x1, x2, precision);
-          if (zero && !isZeroCloseToExisting(zeros, zero, precision)) {
-              zeros.push(zero);
-          }
-      }
-  }
+        const [x1, x2] = [x, x + step];
+        const [y1, y2] = [expr.evaluate({ x: x1 }), expr.evaluate({ x: x2 })];
 
-  return zeros;
+        if (!Number.isFinite(y1) || !Number.isFinite(y2)) continue;
+
+        if (y1 * y2 <= 0) {
+            const zero = findZeroInInterval(expr, x1, x2, precision);
+            if (zero && !isZeroCloseToExisting(zeros, zero, precision)) {
+                zeros.push(zero);
+            }
+        }
+    }
+
+    return zeros;
 }
+
+// Check if a zero is close to any already found zeros
+function isZeroCloseToExisting(zeros, zero, precision) {
+    return zeros.some(z => Math.abs(z - zero) < precision * 10);
+} 
 
 function findZeroInInterval(expr, low, high, precision) {
   let mid;
@@ -175,8 +206,3 @@ function findZeroInInterval(expr, low, high, precision) {
   }
   return (low + high) / 2;
 }
-
-function isZeroCloseToExisting(zeros, zero, precision) {
-  return zeros.some(z => Math.abs(z - zero) < precision * 10);
-}
-

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MathVista - Interactive Function Analyzer</title>
+  <link rel="stylesheet" href="/mathvista.599ca509.css">
+</head>
+<body>
+  <div class="navbar">
+    <div class="navbar-brand">
+      <div class="logo-container">
+        <img src="/logo-icon.aec69bfe.svg" alt="MathVista function graph icon" class="logo-icon">
+        <div class="logo-text">
+          <h1 class="brand-name">
+            <span class="brand-math">Math</span><span class="brand-vista">Vista</span>
+          </h1>
+          <p class="brand-tagline">Interactive Function Analyzer</p>
+        </div>
+      </div>
+    </div>
+  
+    <div class="navbar-github">
+      <a href="https://github.com/twoj-projekt" target="_blank" aria-label="GitHub">
+        <i class="fab fa-github"></i>
+      </a>
+    </div>
+  </div>
+  
+
+  <div class="container">
+    <div class="content-grid">
+      <div class="control-panel">
+        <div class="card">
+          <div class="card-header">Function Settings</div>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="function-input">Enter function f(x):</label>
+              <input type="text" id="function-input" placeholder="e.g. x^2 - 2*x - 3" value="x^2 - 2*x - 3">
+              <div class="function-preview">f(x) = x² - 2x - 3</div>
+            </div>
+            
+            <div class="form-group">
+              <label>Range for x:</label>
+              <div class="range-group">
+                <input type="text" id="x-min" placeholder="Min" value="-5">
+                <input type="text" id="x-max" placeholder="Max" value="5">
+              </div>
+            </div>
+            
+            <div class="switch-group">
+              <label class="switch">
+                <input type="checkbox" id="toggle-zeros" checked="">
+                <span class="slider"></span>
+              </label>
+              <span class="switch-label">Show zeros</span>
+            </div>
+            
+            <div class="btn-group">
+              <button class="btn" id="analyze-btn">Analyze Function</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="main-content">
+        <div class="card">
+          <div class="card-header">Function Graph</div>
+          <div class="card-body">
+            <div class="chart-container">
+              <canvas id="function-chart"></canvas>
+            </div>
+            
+            <div class="point-legend">
+              <div class="point-marker">
+                <span class="point-color zeros-color"></span>
+                <span>Zeros</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- tabs -->
+        <div class="tab-container">
+          <div class="tabs">
+            <div class="tab active" data-tab="analysis">Analysis Results</div>
+            <div class="tab" data-tab="help">Help</div>
+          </div>
+          
+          <div class="tab-content active" id="analysis-tab">
+            <div class="section">
+              <div class="section-title">Zeros</div>
+              <div id="zeros-result">...</div>
+            </div>
+            
+          </div>
+          
+          <div class="tab-content" id="derivatives-tab">
+            <div class="section">
+              <div class="section-title">First Derivative</div>
+              <div class="function-preview">f'(x) = 2x - 2</div>
+              <p>The derivative is zero at x = 1, which corresponds to the minimum of f(x).</p>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Second Derivative</div>
+              <div class="function-preview">f''(x) = 2</div>
+              <p>The second derivative is constant and positive, confirming that the critical point at x = 1 is a minimum.</p>
+            </div>
+          </div>
+          
+          <div class="tab-content" id="table-tab">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>x</th>
+                    <th>f(x)</th>
+                    <th>f'(x)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>-5</td>
+                    <td>22</td>
+                    <td>-12</td>
+                  </tr>
+                  <tr>
+                    <td>-4</td>
+                    <td>13</td>
+                    <td>-10</td>
+                  </tr>
+                  <tr>
+                    <td>-3</td>
+                    <td>6</td>
+                    <td>-8</td>
+                  </tr>
+                  <tr>
+                    <td>-2</td>
+                    <td>1</td>
+                    <td>-6</td>
+                  </tr>
+                  <tr>
+                    <td>-1</td>
+                    <td>0</td>
+                    <td>-4</td>
+                  </tr>
+                  <tr>
+                    <td>0</td>
+                    <td>-3</td>
+                    <td>-2</td>
+                  </tr>
+                  <tr>
+                    <td>1</td>
+                    <td>-4</td>
+                    <td>0</td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td>-3</td>
+                    <td>2</td>
+                  </tr>
+                  <tr>
+                    <td>3</td>
+                    <td>0</td>
+                    <td>4</td>
+                  </tr>
+                  <tr>
+                    <td>4</td>
+                    <td>5</td>
+                    <td>6</td>
+                  </tr>
+                  <tr>
+                    <td>5</td>
+                    <td>12</td>
+                    <td>8</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <div class="tab-content" id="help-tab">
+            <div class="info-box">
+              <p>MathVista allows you to analyze mathematical functions interactively. Enter your function, set the analysis options, and click "Analyze Function".</p>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Supported Operations</div>
+              <ul>
+                <li>Basic operations: <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code> (power)</li>
+                <li>Functions: <code>sin</code>, <code>cos</code>, <code>tan</code>, <code>sqrt</code>, <code>log</code>, <code>ln</code>, <code>abs</code></li>
+                <li>Constants: <code>pi</code>, <code>e</code></li>
+              </ul>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Example Functions</div>
+              <ul>
+                <li><code>x^2 - 2*x - 3</code> (quadratic function)</li>
+                <li><code>sin(x)</code> (trigonometric function)</li>
+                <li><code>1/x</code> (rational function)</li>
+                <li><code>ln(x)</code> (logarithmic function)</li>
+                <li><code>e^x</code> (exponential function)</li>
+                <li><code>x^3 - 6*x^2 + 11*x - 6</code> (cubic function)</li>
+                <li><code>sqrt(x)</code> (square root function)</li>
+              </ul>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Tips</div>
+              <ul>
+                <li>Use the switches to toggle different analysis features</li>
+                <li>Switch between tabs to see different aspects of the analysis</li>
+                <li>You can adjust the x-range to focus on specific areas of interest</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/mathvista.b828852a.js"></script>
+</body>
+</html>

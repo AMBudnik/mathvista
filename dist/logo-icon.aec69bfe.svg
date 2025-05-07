@@ -1,0 +1,16 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle (optional) -->
+  <circle cx="60" cy="60" r="55" fill="white" stroke="#f0f0f0" stroke-width="2"></circle>
+  
+  <!-- Coordinate system -->
+  <line x1="25" y1="60" x2="95" y2="60" stroke="#2e5090" stroke-width="3"></line>
+  <line x1="60" y1="25" x2="60" y2="95" stroke="#2e5090" stroke-width="3"></line>
+  
+  <!-- Function curve -->
+  <path d="M 25,85 Q 45,25 60,60 Q 75,95 95,35" stroke="#ff5722" stroke-width="4" fill="none"></path>
+  
+  <!-- Highlight points -->
+  <circle cx="60" cy="60" r="4" fill="#2e5090"></circle>
+  <circle cx="40" cy="50" r="4" fill="#2e5090"></circle>
+  <circle cx="80" cy="70" r="4" fill="#2e5090"></circle>
+</svg>
