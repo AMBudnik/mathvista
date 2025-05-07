@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "interactive function analyzer",
   "scripts": {
-    "start": "parcel src/index.html --open",
-    "build": "parcel build src/index.html --public-url ./"
+    "start": "parcel index.html --open",
+    "build": "parcel build index.html --public-url ./"
   },
   "keywords": ["interactive", "math", "charting", "analysis"],
   "author": "AMBUdnik",
