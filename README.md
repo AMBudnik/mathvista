@@ -1,7 +1,7 @@
 # mathvista
 Interactive Function Analyzer
 
-![Mathvista Board](images/mathvista-board.png)
+![Mathvista Board](src/images/mathvista-board.png)
 
 ## Supported Operations
 - **Basic operations**: +, -, *, /, ^ (power)
