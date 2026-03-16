@@ -1,7 +1,8 @@
-import * as math from 'mathjs';
-import { Chart, LineController, LineElement, PointElement, LinearScale, Title, CategoryScale } from 'chart.js';
+import { compile, derivative } from 'mathjs';
+import { Chart, LineController, LineElement, PointElement, LinearScale, Title } from 'chart.js';
+import { validateRange, findZeros, generatePlotData } from './utils.js';
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, Title, CategoryScale);
+Chart.register(LineController, LineElement, PointElement, LinearScale, Title);
 
 document.addEventListener('DOMContentLoaded', () => {
     const analyzeBtn = document.getElementById('analyze-btn');
@@ -27,10 +28,13 @@ function analyzeFunction() {
   const xMin = parseFloat(getInputValue('x-min'));
   const xMax = parseFloat(getInputValue('x-max'));
 
-  if (!validateRange(xMin, xMax)) return;
+  if (!validateRange(xMin, xMax)) {
+      alert('Invalid x range.');
+      return;
+  }
 
   try {
-      const parsed = math.compile(expr);
+      const parsed = compile(expr);
       const values = generatePlotData(parsed, xMin, xMax);
 
       const showZeros = document.getElementById('toggle-zeros').checked;
@@ -49,43 +53,6 @@ function getInputValue(id) {
   return document.getElementById(id).value;
 }
 
-function validateRange(xMin, xMax) {
-  if (isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
-      alert('Invalid x range.');
-      return false;
-  }
-  return true;
-}
-
-function generatePlotData(parsed, xMin, xMax) {
-    const values = [];
-    const threshold = 1000; // Define a threshold to avoid very large values
-
-    for (let x = xMin; x <= xMax; x += 0.1) {
-        let y;
-
-        // Skip plotting at x = 0 for functions like 1/x
-        if (x === 0) {
-            values.push({ x, y: null });
-            continue;
-        }
-
-        try {
-            y = parsed.evaluate({ x });
-        } catch {
-            y = null;
-        }
-
-        // If the result is too large (approaching infinity) or NaN, skip plotting
-        if (typeof y !== 'number' || !isFinite(y) || Math.abs(y) > threshold) {
-            values.push({ x, y: null });
-        } else {
-            values.push({ x, y });
-        }
-    }
-    return values;
-}
-  
 function renderChart(expr, values, zeros) {
   const ctx = document.getElementById('function-chart').getContext('2d');
 
@@ -132,8 +99,7 @@ function renderChart(expr, values, zeros) {
 }
 
 function displayDerivative(expr) {
-  const derivative = math.derivative(expr, 'x');
-  const derivativeExpr = derivative.toString();
+  const derivativeExpr = derivative(expr, 'x').toString();
   document.querySelector('.function-preview').textContent = `f'(x) = ${derivativeExpr}`;
 }
 
@@ -159,50 +125,4 @@ function displayZeros(parsed, zeros, showZeros) {
       item.textContent = 'No zeros found in the given range.';
       resultDiv.appendChild(item);
   }
-}
-
-// Counting zeros
-function findZeros(expr, xMin, xMax) {
-    const zeros = [];
-    const step = 0.1;
-    const precision = 0.0001;
-
-    for (let x = xMin; x < xMax; x += step) {
-        // Skip regions where the function is undefined (e.g., near x = 0 for 1/x)
-        if (Math.abs(x) < precision) continue;
-
-        const [x1, x2] = [x, x + step];
-        const [y1, y2] = [expr.evaluate({ x: x1 }), expr.evaluate({ x: x2 })];
-
-        if (!Number.isFinite(y1) || !Number.isFinite(y2)) continue;
-
-        if (y1 * y2 <= 0) {
-            const zero = findZeroInInterval(expr, x1, x2, precision);
-            if (zero && !isZeroCloseToExisting(zeros, zero, precision)) {
-                zeros.push(zero);
-            }
-        }
-    }
-
-    return zeros;
-}
-
-// Check if a zero is close to any already found zeros
-function isZeroCloseToExisting(zeros, zero, precision) {
-    return zeros.some(z => Math.abs(z - zero) < precision * 10);
-} 
-
-function findZeroInInterval(expr, low, high, precision) {
-  let mid;
-  while ((high - low) > precision) {
-      mid = (low + high) / 2;
-      const yMid = expr.evaluate({ x: mid });
-
-      if (expr.evaluate({ x: low }) * yMid <= 0) {
-          high = mid;
-      } else {
-          low = mid;
-      }
-  }
-  return (low + high) / 2;
 }

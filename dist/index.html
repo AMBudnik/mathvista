@@ -1,78 +1,70 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MathVista - Interactive Function Analyzer</title>
-  <link rel="stylesheet" href="/mathvista.599ca509.css">
-</head>
-<body>
-  <div class="navbar">
-    <div class="navbar-brand">
-      <div class="logo-container">
-        <img src="/logo-icon.aec69bfe.svg" alt="MathVista function graph icon" class="logo-icon">
-        <div class="logo-text">
-          <h1 class="brand-name">
-            <span class="brand-math">Math</span><span class="brand-vista">Vista</span>
+<!DOCTYPE html><html lang=en><meta charset=UTF-8><meta name=viewport content="width=device-width, initial-scale=1.0"><title>MathVista - Interactive Function Analyzer</title><link rel=stylesheet href=mathvista.b71069b2.css><body>
+  <div class=navbar>
+    <div class=navbar-brand>
+      <div class=logo-container>
+        <img src=logo-icon.bf2602cd.svg alt="MathVista function graph icon" class=logo-icon>
+        <div class=logo-text>
+          <h1 class=brand-name>
+            <span class=brand-math>Math</span><span class=brand-vista>Vista</span>
           </h1>
-          <p class="brand-tagline">Interactive Function Analyzer</p>
+          <p class=brand-tagline>Interactive Function Analyzer</p>
         </div>
       </div>
     </div>
   
-    <div class="navbar-github">
-      <a href="https://github.com/twoj-projekt" target="_blank" aria-label="GitHub">
-        <i class="fab fa-github"></i>
+    <div class=navbar-github>
+      <a href=https://github.com/AMBudnik/mathvista target=_blank aria-label=GitHub>
+        <i class="fa-github fab"></i>
       </a>
     </div>
   </div>
   
 
-  <div class="container">
-    <div class="content-grid">
-      <div class="control-panel">
-        <div class="card">
-          <div class="card-header">Function Settings</div>
-          <div class="card-body">
-            <div class="form-group">
-              <label for="function-input">Enter function f(x):</label>
-              <input type="text" id="function-input" placeholder="e.g. x^2 - 2*x - 3" value="x^2 - 2*x - 3">
-              <div class="function-preview">f(x) = x² - 2x - 3</div>
+  <div class=container>
+    <div class=content-grid>
+      <div class=control-panel>
+        <div class=card>
+          <div class=card-header>Function Settings</div>
+          <div class=card-body>
+            <div class=form-group>
+              <label for=function-input>Enter function f(x):</label>
+              <input id=function-input placeholder="e.g. x^2 - 2*x - 3" value="x^2 - 2*x - 3">
+              <div class=function-preview>f(x) = x² - 2x - 3</div>
             </div>
             
-            <div class="form-group">
+            <div class=form-group>
               <label>Range for x:</label>
-              <div class="range-group">
-                <input type="text" id="x-min" placeholder="Min" value="-5">
-                <input type="text" id="x-max" placeholder="Max" value="5">
+              <div class=range-group>
+                <input id=x-min placeholder=Min value=-5>
+                <input id=x-max placeholder=Max value=5>
               </div>
             </div>
             
-            <div class="switch-group">
-              <label class="switch">
-                <input type="checkbox" id="toggle-zeros" checked="">
-                <span class="slider"></span>
+            <div class=switch-group>
+              <label class=switch>
+                <input type=checkbox id=toggle-zeros checked>
+                <span class=slider></span>
               </label>
-              <span class="switch-label">Show zeros</span>
+              <span class=switch-label>Show zeros</span>
             </div>
             
-            <div class="btn-group">
-              <button class="btn" id="analyze-btn">Analyze Function</button>
+            <div class=btn-group>
+              <button class=btn id=analyze-btn>Analyze Function</button>
             </div>
           </div>
         </div>
       </div>
       
-      <div class="main-content">
-        <div class="card">
-          <div class="card-header">Function Graph</div>
-          <div class="card-body">
-            <div class="chart-container">
-              <canvas id="function-chart"></canvas>
+      <div class=main-content>
+        <div class=card>
+          <div class=card-header>Function Graph</div>
+          <div class=card-body>
+            <div class=chart-container>
+              <canvas id=function-chart></canvas>
             </div>
             
-            <div class="point-legend">
-              <div class="point-marker">
+            <div class=point-legend>
+              <div class=point-marker>
                 <span class="point-color zeros-color"></span>
                 <span>Zeros</span>
               </div>
@@ -80,37 +72,37 @@
           </div>
         </div>
         
-        <!-- tabs -->
-        <div class="tab-container">
-          <div class="tabs">
-            <div class="tab active" data-tab="analysis">Analysis Results</div>
-            <div class="tab" data-tab="help">Help</div>
+        
+        <div class=tab-container>
+          <div class=tabs>
+            <div class="active tab" data-tab=analysis>Analysis Results</div>
+            <div class=tab data-tab=help>Help</div>
           </div>
           
-          <div class="tab-content active" id="analysis-tab">
-            <div class="section">
-              <div class="section-title">Zeros</div>
-              <div id="zeros-result">...</div>
+          <div class="active tab-content" id=analysis-tab>
+            <div class=section>
+              <div class=section-title>Zeros</div>
+              <div id=zeros-result>...</div>
             </div>
             
           </div>
           
-          <div class="tab-content" id="derivatives-tab">
-            <div class="section">
-              <div class="section-title">First Derivative</div>
-              <div class="function-preview">f'(x) = 2x - 2</div>
+          <div class=tab-content id=derivatives-tab>
+            <div class=section>
+              <div class=section-title>First Derivative</div>
+              <div class=function-preview>f'(x) = 2x - 2</div>
               <p>The derivative is zero at x = 1, which corresponds to the minimum of f(x).</p>
             </div>
             
-            <div class="section">
-              <div class="section-title">Second Derivative</div>
-              <div class="function-preview">f''(x) = 2</div>
+            <div class=section>
+              <div class=section-title>Second Derivative</div>
+              <div class=function-preview>f''(x) = 2</div>
               <p>The second derivative is constant and positive, confirming that the critical point at x = 1 is a minimum.</p>
             </div>
           </div>
           
-          <div class="tab-content" id="table-tab">
-            <div class="table-container">
+          <div class=tab-content id=table-tab>
+            <div class=table-container>
               <table>
                 <thead>
                   <tr>
@@ -180,13 +172,13 @@
             </div>
           </div>
           
-          <div class="tab-content" id="help-tab">
-            <div class="info-box">
+          <div class=tab-content id=help-tab>
+            <div class=info-box>
               <p>MathVista allows you to analyze mathematical functions interactively. Enter your function, set the analysis options, and click "Analyze Function".</p>
             </div>
             
-            <div class="section">
-              <div class="section-title">Supported Operations</div>
+            <div class=section>
+              <div class=section-title>Supported Operations</div>
               <ul>
                 <li>Basic operations: <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code> (power)</li>
                 <li>Functions: <code>sin</code>, <code>cos</code>, <code>tan</code>, <code>sqrt</code>, <code>log</code>, <code>ln</code>, <code>abs</code></li>
@@ -194,8 +186,8 @@
               </ul>
             </div>
             
-            <div class="section">
-              <div class="section-title">Example Functions</div>
+            <div class=section>
+              <div class=section-title>Example Functions</div>
               <ul>
                 <li><code>x^2 - 2*x - 3</code> (quadratic function)</li>
                 <li><code>sin(x)</code> (trigonometric function)</li>
@@ -207,8 +199,8 @@
               </ul>
             </div>
             
-            <div class="section">
-              <div class="section-title">Tips</div>
+            <div class=section>
+              <div class=section-title>Tips</div>
               <ul>
                 <li>Use the switches to toggle different analysis features</li>
                 <li>Switch between tabs to see different aspects of the analysis</li>
@@ -220,6 +212,5 @@
       </div>
     </div>
   </div>
-  <script type="module" src="/mathvista.b828852a.js"></script>
-</body>
-</html>
+  <script type=module src=mathvista.07c9cfca.js></script>
+

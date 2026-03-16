@@ -94,7 +94,54 @@
 
     function localRequire(x) {
       var res = localRequire.resolve(x);
-      return res === false ? {} : newRequire(res);
+      if (res === false) {
+        return {};
+      }
+      // Synthesize a module to follow re-exports.
+      if (Array.isArray(res)) {
+        var m = {__esModule: true};
+        res.forEach(function (v) {
+          var key = v[0];
+          var id = v[1];
+          var exp = v[2] || v[0];
+          var x = newRequire(id);
+          if (key === '*') {
+            Object.keys(x).forEach(function (key) {
+              if (
+                key === 'default' ||
+                key === '__esModule' ||
+                Object.prototype.hasOwnProperty.call(m, key)
+              ) {
+                return;
+              }
+
+              Object.defineProperty(m, key, {
+                enumerable: true,
+                get: function () {
+                  return x[key];
+                },
+              });
+            });
+          } else if (exp === '*') {
+            Object.defineProperty(m, key, {
+              enumerable: true,
+              value: x,
+            });
+          } else {
+            Object.defineProperty(m, key, {
+              enumerable: true,
+              get: function () {
+                if (exp === 'default') {
+                  return x.__esModule ? x.default : x;
+                }
+                return x[exp];
+              },
+            });
+          }
+        });
+        return m;
+      }
+      return newRequire(res);
     }
 
     function resolve(x) {
@@ -868,9 +915,6 @@ function findZeroInInterval(expr, low, high, precision) {
         else low = mid;
     }
     return (low + high) / 2;
-}
-function isZeroCloseToExisting(zeros, zero, precision) {
-    return zeros.some((z)=>Math.abs(z - zero) < precision * 10);
 }
 
 },{"mathjs":"buHM4","chart.js":"6U2cz"}],"buHM4":[function(require,module,exports,__globalThis) {
@@ -5441,12 +5485,12 @@ function throwNoFraction(x) {
             return err;
         }
         /**
-     * Find the lowest index of all exact types of a parameter (no conversions)
+     * Find the lowest index of all types of a parameter
      * @param {Param} param
      * @return {number} Returns the index of the lowest type in typed.types
      */ function getLowestTypeIndex(param) {
             let min = typeList.length + 1;
-            for(let i = 0; i < param.types.length; i++)if (isExactType(param.types[i])) min = Math.min(min, param.types[i].typeIndex);
+            for(let i = 0; i < param.types.length; i++)min = Math.min(min, param.types[i].typeIndex);
             return min;
         }
         /**
@@ -5460,44 +5504,58 @@ function throwNoFraction(x) {
             return min;
         }
         /**
-     * Compare two params
+     * Compare two params. The return value is a number that is
+     * negative when param1 should be considered first, positive
+     * when param2 should be considered first, and zero when the
+     * params are indistinguishable. Primarily as a debugging aid,
+     * the value is always less than one in absolute value, and
+     * a smaller absolute value indicates a less important distinction
+     * between the parameters.
      * @param {Param} param1
      * @param {Param} param2
-     * @return {number} returns -1 when param1 must get a lower
-     *                  index than param2, 1 when the opposite,
-     *                  or zero when both are equal
+     * @return {number} negative, positive, or zero depending on whether
+     *                  param1 should be ordered before, after, or equivalently
+     *                  to param2
      */ function compareParams(param1, param2) {
             // We compare a number of metrics on a param in turn:
             // 1) 'any' parameters are the least preferred
             if (param1.hasAny) {
-                if (!param2.hasAny) return 1;
-            } else if (param2.hasAny) return -1;
+                if (!param2.hasAny) return 0.1;
+            } else if (param2.hasAny) return -0.1;
             // 2) Prefer non-rest to rest parameters
             if (param1.restParam) {
-                if (!param2.restParam) return 1;
-            } else if (param2.restParam) return -1;
-            // 3) Prefer exact type match to conversions
-            if (param1.hasConversion) {
-                if (!param2.hasConversion) return 1;
-            } else if (param2.hasConversion) return -1;
-            // 4) Prefer lower type index:
+                if (!param2.restParam) return 0.01;
+            } else if (param2.restParam) return -0.01;
+            // 3) Prefer lower type index:
             const typeDiff = getLowestTypeIndex(param1) - getLowestTypeIndex(param2);
-            if (typeDiff < 0) return -1;
-            if (typeDiff > 0) return 1;
+            if (typeDiff < 0) return -0.001;
+            if (typeDiff > 0) return 0.001;
+            // 4) Prefer exact type match to conversions, with a strength that
+            //    grows with the conversion index
+            const conv1 = getLowestConversionIndex(param1);
+            const conv2 = getLowestConversionIndex(param2);
+            if (param1.hasConversion) {
+                if (!param2.hasConversion) return (1 + conv1) * 0.000001;
+            } else if (param2.hasConversion) return -(1 + conv2) * 0.000001;
             // 5) Prefer lower conversion index
-            const convDiff = getLowestConversionIndex(param1) - getLowestConversionIndex(param2);
-            if (convDiff < 0) return -1;
-            if (convDiff > 0) return 1;
+            const convDiff = conv1 - conv2;
+            if (convDiff < 0) return -0.0000001;
+            if (convDiff > 0) return 0.0000001;
             // Don't have a basis for preference
             return 0;
         }
         /**
-     * Compare two signatures
+     * Compare two signatures. The result is a number that is negative
+     * when the first signature should be preferred to the second, positive
+     * when the second signature should be preferred, and zero in case the
+     * two signatures are essentially equivalent. Primarily as a debugging
+     * aid, a larger absolute value indicates a more "important" difference.
+     *
      * @param {Signature} signature1
      * @param {Signature} signature2
-     * @return {number} returns a negative number when param1 must get a lower
-     *                  index than param2, a positive number when the opposite,
-     *                  or zero when both are equal
+     * @return {number} returns a negative number when signature1 must get a
+     *                  lower index than signature2, a positive number when the
+     *                  opposite holds, or zero when both are equivalent.
      */ function compareSignatures(signature1, signature2) {
             const pars1 = signature1.params;
             const pars2 = signature2.params;
@@ -5508,8 +5566,8 @@ function throwNoFraction(x) {
             // We compare a number of metrics on signatures in turn:
             // 1) An "any rest param" is least preferred
             if (hasRest1 && last1.hasAny) {
-                if (!hasRest2 || !last2.hasAny) return 1;
-            } else if (hasRest2 && last2.hasAny) return -1;
+                if (!hasRest2 || !last2.hasAny) return 10000000;
+            } else if (hasRest2 && last2.hasAny) return -10000000;
             // 2) Minimize the number of 'any' parameters
             let any1 = 0;
             let conv1 = 0;
@@ -5524,19 +5582,19 @@ function throwNoFraction(x) {
                 if (par.hasAny) ++any2;
                 if (par.hasConversion) ++conv2;
             }
-            if (any1 !== any2) return any1 - any2;
+            if (any1 !== any2) return (any1 - any2) * 1000000;
             // 3) A conversion rest param is less preferred
             if (hasRest1 && last1.hasConversion) {
-                if (!hasRest2 || !last2.hasConversion) return 1;
-            } else if (hasRest2 && last2.hasConversion) return -1;
+                if (!hasRest2 || !last2.hasConversion) return 100000;
+            } else if (hasRest2 && last2.hasConversion) return -100000;
             // 4) Minimize the number of conversions
-            if (conv1 !== conv2) return conv1 - conv2;
+            if (conv1 !== conv2) return (conv1 - conv2) * 10000;
             // 5) Prefer no rest param
             if (hasRest1) {
-                if (!hasRest2) return 1;
-            } else if (hasRest2) return -1;
+                if (!hasRest2) return 1000;
+            } else if (hasRest2) return -1000;
             // 6) Prefer shorter with rest param, longer without
-            const lengthCriterion = (pars1.length - pars2.length) * (hasRest1 ? -1 : 1);
+            const lengthCriterion = (pars1.length - pars2.length) * (hasRest1 ? -100 : 100);
             if (lengthCriterion !== 0) return lengthCriterion;
             // Signatures are identical in each of the above metrics.
             // In particular, they are the same length.
@@ -5549,14 +5607,17 @@ function throwNoFraction(x) {
                 comparisons.push(thisComparison);
                 tc += thisComparison;
             }
-            if (tc !== 0) return tc;
+            if (tc !== 0) return (tc < 0 ? -10 : 10) + tc;
             // They have the same number of preferred parameters, so go by the
             // earliest parameter in which we have a preference.
             // In other words, dispatch is driven somewhat more by earlier
             // parameters than later ones.
             let c;
+            let bonus = 9;
+            const decrement = bonus / (comparisons.length + 1);
             for (c of comparisons){
-                if (c !== 0) return c;
+                if (c !== 0) return (c < 0 ? -bonus : bonus) + c;
+                bonus -= decrement;
             }
             // It's a tossup:
             return 0;
@@ -5571,19 +5632,27 @@ function throwNoFraction(x) {
      */ function availableConversions(typeNames) {
             if (typeNames.length === 0) return [];
             const types = typeNames.map(findType);
-            if (typeNames.length > 1) types.sort((t1, t2)=>t1.index - t2.index);
-            let matches = types[0].conversionsTo;
-            if (typeNames.length === 1) return matches;
-            matches = matches.concat([]); // shallow copy the matches
-            // Since the types are now in index order, we just want the first
-            // occurrence of any from type:
+            if (typeNames.length === 1) return types[0].conversionsTo;
+            // Here, for each type that occurs as the from-type of any conversion
+            // to any of the types found, we must select the conversion of
+            // lowest index from that type. So first collect the types.
             const knownTypes = new Set(typeNames);
-            for(let i = 1; i < types.length; ++i){
-                let newMatch;
-                for (newMatch of types[i].conversionsTo)if (!knownTypes.has(newMatch.from)) {
-                    matches.push(newMatch);
-                    knownTypes.add(newMatch.from);
+            const convertibleTypes = new Set();
+            for(let i = 0; i < types.length; ++i){
+                for (const match of types[i].conversionsTo)if (!knownTypes.has(match.from)) convertibleTypes.add(match.from);
+            }
+            // Now get the lowest-index conversion for each type
+            const matches = [];
+            for (const typeName of convertibleTypes){
+                let bestIndex = nConversions + 1;
+                let bestConversion = null;
+                for(let i = 0; i < types.length; ++i){
+                    for (const match of types[i].conversionsTo)if (match.from === typeName && match.index < bestIndex) {
+                        bestIndex = match.index;
+                        bestConversion = match;
+                    }
                 }
+                matches.push(bestConversion);
             }
             return matches;
         }
@@ -5593,13 +5662,17 @@ function throwNoFraction(x) {
      * - in case of rest parameters, move the rest parameters into an Array
      * @param {Param[]} params
      * @param {function} fn
-     * @return {function} Returns a wrapped function
+     * @return {function} Returns fn or a wrapped function if needed. If it
+     *                    has conversions, the function will be named to indicate
+     *                    what conversions are occurring.
      */ function compileArgsPreprocessing(params, fn) {
             let fnConvert = fn;
             // TODO: can we make this wrapper function smarter/simpler?
+            let name = '';
             if (params.some((p)=>p.hasConversion)) {
                 const restParam = hasRestParam(params);
                 const compiledConversions = params.map(compileArgConversion);
+                name = compiledConversions.map((conv)=>conv.name).join(';');
                 fnConvert = function convertArgs() {
                     const args = [];
                     const last = restParam ? arguments.length - 1 : arguments.length;
@@ -5617,6 +5690,9 @@ function throwNoFraction(x) {
                     ]));
                 };
             }
+            if (name) Object.defineProperty(fnPreprocess, 'name', {
+                value: name
+            });
             return fnPreprocess;
         }
         /**
@@ -5628,43 +5704,52 @@ function throwNoFraction(x) {
             let test0, test1, conversion0, conversion1;
             const tests = [];
             const conversions = [];
+            let name = '';
             param.types.forEach(function(type) {
                 if (type.conversion) {
+                    name += type.conversion.from + '~>' + type.conversion.to + ',';
                     tests.push(findType(type.conversion.from).test);
                     conversions.push(type.conversion.convert);
                 }
             });
+            if (name) name = name.slice(0, -1);
+            else name = 'pass';
             // create optimized conversion functions depending on the number of conversions
+            let convertor = (arg)=>arg;
             switch(conversions.length){
                 case 0:
-                    return function convertArg(arg) {
-                        return arg;
-                    };
+                    break;
                 case 1:
                     test0 = tests[0];
                     conversion0 = conversions[0];
-                    return function convertArg(arg) {
+                    convertor = function convertArg(arg) {
                         if (test0(arg)) return conversion0(arg);
                         return arg;
                     };
+                    break;
                 case 2:
                     test0 = tests[0];
                     test1 = tests[1];
                     conversion0 = conversions[0];
                     conversion1 = conversions[1];
-                    return function convertArg(arg) {
+                    convertor = function convertArg(arg) {
                         if (test0(arg)) return conversion0(arg);
                         if (test1(arg)) return conversion1(arg);
                         return arg;
                     };
+                    break;
                 default:
-                    return function convertArg(arg) {
+                    convertor = function convertArg(arg) {
                         for(let i = 0; i < conversions.length; i++){
                             if (tests[i](arg)) return conversions[i](arg);
                         }
                         return arg;
                     };
             }
+            Object.defineProperty(convertor, 'name', {
+                value: name
+            });
+            return convertor;
         }
         /**
      * Split params with union types in to separate params.
@@ -6263,6 +6348,7 @@ function throwNoFraction(x) {
             }
             to.conversionsTo.push({
                 from: conversion.from,
+                to: to.name,
                 convert: conversion.convert,
                 index: nConversions++
             });
@@ -8319,7 +8405,7 @@ var createBigNumberClass = /* #__PURE__ */ (0, _factoryJs.factory)(name, depende
 (function(globalScope) {
     'use strict';
     /*!
-   *  decimal.js v10.5.0
+   *  decimal.js v10.6.0
    *  An arbitrary-precision Decimal type for JavaScript.
    *  https://github.com/MikeMcl/decimal.js
    *  Copyright (c) 2025 Michael Mclaughlin <M8ch88l@gmail.com>
@@ -11917,7 +12003,7 @@ var createBigNumberClass = /* #__PURE__ */ (0, _factoryJs.factory)(name, depende
     if (typeof define == 'function' && define.amd) define(function() {
         return Decimal;
     });
-    else if (0, module.exports) {
+    else if (module.exports) {
         if (typeof Symbol == 'function' && typeof Symbol.iterator == 'symbol') {
             P[Symbol['for']('nodejs.util.inspect.custom')] = P.toString;
             P[Symbol.toStringTag] = 'Decimal';
@@ -12085,16 +12171,16 @@ var createComplexClass = /* #__PURE__ */ (0, _factoryJs.factory)(name, dependenc
 
 },{"complex.js":"jeIIh","../../utils/number.js":"qZpch","../../utils/is.js":"kFN09","../../utils/factory.js":"kUz6I","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"jeIIh":[function(require,module,exports,__globalThis) {
 /*
-Complex.js v2.4.2 11/5/2024
+Complex.js v2.4.3 11/13/2025
 https://raw.org/article/complex-numbers-in-javascript/
 
-Copyright (c) 2024, Robert Eisele (https://raw.org/)
+Copyright (c) 2025, Robert Eisele (https://raw.org/)
 Licensed under the MIT license.
 */ 'use strict';
-(function(r) {
+(function(q) {
     function l(a, b) {
-        if (void 0 === a || null === a) f.re = f.im = 0;
-        else if (void 0 !== b) f.re = a, f.im = b;
+        if (a === void 0 || a === null) f.re = f.im = 0;
+        else if (b !== void 0) f.re = a, f.im = b;
         else switch(typeof a){
             case "object":
                 if ("im" in a && "re" in a) f.re = a.re, f.im = a.im;
@@ -12106,19 +12192,19 @@ Licensed under the MIT license.
                     if (!isFinite(a.r) && isFinite(a.phi)) return c.INFINITY;
                     f.re = a.r * Math.cos(a.phi);
                     f.im = a.r * Math.sin(a.phi);
-                } else 2 === a.length ? (f.re = a[0], f.im = a[1]) : m();
+                } else a.length === 2 ? (f.re = a[0], f.im = a[1]) : m();
                 break;
             case "string":
                 f.im = f.re = 0;
                 a = a.replace(/_/g, "").match(/\d+\.?\d*e[+-]?\d+|\d+\.?\d*|\.\d+|./g);
                 b = 1;
                 let d = 0;
-                null === a && m();
+                a === null && m();
                 for(let e = 0; e < a.length; e++){
                     const g = a[e];
-                    " " !== g && "\t" !== g && "\n" !== g && ("+" === g ? b++ : "-" === g ? d++ : ("i" === g || "I" === g ? (0 === b + d && m(), " " === a[e + 1] || isNaN(a[e + 1]) ? f.im += parseFloat((d % 2 ? "-" : "") + "1") : (f.im += parseFloat((d % 2 ? "-" : "") + a[e + 1]), e++)) : ((0 === b + d || isNaN(g)) && m(), "i" === a[e + 1] || "I" === a[e + 1] ? (f.im += parseFloat((d % 2 ? "-" : "") + g), e++) : f.re += parseFloat((d % 2 ? "-" : "") + g)), b = d = 0));
+                    g !== " " && g !== "\t" && g !== "\n" && (g === "+" ? b++ : g === "-" ? d++ : (g === "i" || g === "I" ? (b + d === 0 && m(), a[e + 1] === " " || isNaN(a[e + 1]) ? f.im += parseFloat((d % 2 ? "-" : "") + "1") : (f.im += parseFloat((d % 2 ? "-" : "") + a[e + 1]), e++)) : ((b + d === 0 || isNaN(g)) && m(), a[e + 1] === "i" || a[e + 1] === "I" ? (f.im += parseFloat((d % 2 ? "-" : "") + g), e++) : f.re += parseFloat((d % 2 ? "-" : "") + g)), b = d = 0));
                 }
-                0 < b + d && m();
+                b + d > 0 && m();
                 break;
             case "number":
                 f.im = 0;
@@ -12139,15 +12225,15 @@ Licensed under the MIT license.
             b,
             a
         ]);
-        if (1E8 > a) return Math.sqrt(a * a + b * b);
+        if (a < 1E8) return Math.sqrt(a * a + b * b);
         b /= a;
         return a * Math.sqrt(1 + b * b);
     }
     function p(a, b) {
         const d = Math.abs(a), e = Math.abs(b);
-        if (0 === a) return Math.log(e);
-        if (0 === b) return Math.log(d);
-        if (3E3 > d && 3E3 > e) return .5 * Math.log(a * a + b * b);
+        if (a === 0) return Math.log(e);
+        if (b === 0) return Math.log(d);
+        if (d < 3E3 && e < 3E3) return Math.log(a * a + b * b) * .5;
         a *= .5;
         b *= .5;
         return .5 * Math.log(a * a + b * b) + Math.LN2;
@@ -12159,9 +12245,9 @@ Licensed under the MIT license.
         this.im = a.im;
     }
     const h = Math.cosh || function(a) {
-        return 1E-9 > Math.abs(a) ? 1 - a : .5 * (Math.exp(a) + Math.exp(-a));
+        return Math.abs(a) < 1E-9 ? 1 - a : (Math.exp(a) + Math.exp(-a)) * .5;
     }, k = Math.sinh || function(a) {
-        return 1E-9 > Math.abs(a) ? a : .5 * (Math.exp(a) - Math.exp(-a));
+        return Math.abs(a) < 1E-9 ? a : (Math.exp(a) - Math.exp(-a)) * .5;
     }, f = {
         re: 0,
         im: 0
@@ -12188,13 +12274,13 @@ Licensed under the MIT license.
         mul: function(a, b) {
             a = l(a, b);
             b = this.isInfinite();
-            const d = !(isFinite(a.re) && isFinite(a.im)), e = 0 === this.re && 0 === this.im, g = 0 === a.re && 0 === a.im;
-            return b && g || d && e ? c.NAN : b || d ? c.INFINITY : 0 === a.im && 0 === this.im ? new c(this.re * a.re, 0) : new c(this.re * a.re - this.im * a.im, this.re * a.im + this.im * a.re);
+            const d = !(isFinite(a.re) && isFinite(a.im)), e = this.re === 0 && this.im === 0, g = a.re === 0 && a.im === 0;
+            return b && g || d && e ? c.NAN : b || d ? c.INFINITY : a.im === 0 && this.im === 0 ? new c(this.re * a.re, 0) : new c(this.re * a.re - this.im * a.im, this.re * a.im + this.im * a.re);
         },
         div: function(a, b) {
             a = l(a, b);
             b = this.isInfinite();
-            const d = !(isFinite(a.re) && isFinite(a.im)), e = 0 === this.re && 0 === this.im, g = 0 === a.re && 0 === a.im;
+            const d = !(isFinite(a.re) && isFinite(a.im)), e = this.re === 0 && this.im === 0, g = a.re === 0 && a.im === 0;
             if (e && g || b && d) return c.NAN;
             if (g || b) return c.INFINITY;
             if (e || d) return c.ZERO;
@@ -12206,11 +12292,11 @@ Licensed under the MIT license.
         },
         pow: function(a, b) {
             a = l(a, b);
-            b = 0 === this.re && 0 === this.im;
-            if (0 === a.re && 0 === a.im) return c.ONE;
-            if (0 === a.im) {
-                if (0 === this.im && 0 < this.re) return new c(Math.pow(this.re, a.re), 0);
-                if (0 === this.re) switch((a.re % 4 + 4) % 4){
+            b = this.re === 0 && this.im === 0;
+            if (a.re === 0 && a.im === 0) return c.ONE;
+            if (a.im === 0) {
+                if (this.im === 0 && this.re > 0) return new c(Math.pow(this.re, a.re), 0);
+                if (this.re === 0) switch((a.re % 4 + 4) % 4){
                     case 0:
                         return new c(Math.pow(this.im, a.re), 0);
                     case 1:
@@ -12221,7 +12307,7 @@ Licensed under the MIT license.
                         return new c(0, -Math.pow(this.im, a.re));
                 }
             }
-            if (b && 0 < a.re) return c.ZERO;
+            if (b && a.re > 0) return c.ZERO;
             const d = Math.atan2(this.im, this.re), e = p(this.re, this.im);
             b = Math.exp(a.re * e - a.im * d);
             a = a.im * e + a.re * d;
@@ -12229,26 +12315,23 @@ Licensed under the MIT license.
         },
         sqrt: function() {
             const a = this.re, b = this.im;
-            if (0 === b) return 0 <= a ? new c(Math.sqrt(a), 0) : new c(0, Math.sqrt(-a));
+            if (b === 0) return a >= 0 ? new c(Math.sqrt(a), 0) : new c(0, Math.sqrt(-a));
             var d = n(a, b);
             d = Math.sqrt(.5 * (d + Math.abs(a)));
             let e = Math.abs(b) / (2 * d);
-            return 0 <= a ? new c(d, 0 > b ? -e : e) : new c(e, 0 > b ? -d : d);
+            return a >= 0 ? new c(d, b < 0 ? -e : e) : new c(e, b < 0 ? -d : d);
         },
         exp: function() {
             const a = Math.exp(this.re);
-            return 0 === this.im ? new c(a, 0) : new c(a * Math.cos(this.im), a * Math.sin(this.im));
+            return this.im === 0 ? new c(a, 0) : new c(a * Math.cos(this.im), a * Math.sin(this.im));
         },
         expm1: function() {
-            const a = this.re, b = this.im;
-            var d = Math.expm1(a) * Math.cos(b);
-            var e = Math.PI / 4;
-            -e > b || b > e ? e = Math.cos(b) - 1 : (e = b * b, e *= e * (e * (e * (e * (e * (e * (e / 20922789888E3 - 1 / 87178291200) + 1 / 479001600) - 1 / 3628800) + 1 / 40320) - 1 / 720) + 1 / 24) - .5);
-            return new c(d + e, Math.exp(a) * Math.sin(b));
+            const a = this.re, b = this.im, d = Math.sin(.5 * b);
+            return new c(Math.expm1(a) * Math.cos(b) + -2 * d * d, Math.exp(a) * Math.sin(b));
         },
         log: function() {
             const a = this.re, b = this.im;
-            return 0 === b && 0 < a ? new c(Math.log(a), 0) : new c(p(a, b), Math.atan2(b, a));
+            return b === 0 && a > 0 ? new c(Math.log(a), 0) : new c(p(a, b), Math.atan2(b, a));
         },
         abs: function() {
             return n(this.re, this.im);
@@ -12295,9 +12378,9 @@ Licensed under the MIT license.
         atan: function() {
             var a = this.re;
             const b = this.im;
-            if (0 === a) {
-                if (1 === b) return new c(0, Infinity);
-                if (-1 === b) return new c(0, -Infinity);
+            if (a === 0) {
+                if (b === 1) return new c(0, Infinity);
+                if (b === -1) return new c(0, -Infinity);
             }
             const d = a * a + (1 - b) * (1 - b);
             a = new c((1 - b * b - a * a) / d, -2 * a / d).log();
@@ -12305,21 +12388,21 @@ Licensed under the MIT license.
         },
         acot: function() {
             const a = this.re, b = this.im;
-            if (0 === b) return new c(Math.atan2(1, a), 0);
+            if (b === 0) return new c(Math.atan2(1, a), 0);
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).atan() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).atan();
+            return d !== 0 ? new c(a / d, -b / d).atan() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).atan();
         },
         asec: function() {
             const a = this.re, b = this.im;
-            if (0 === a && 0 === b) return new c(0, Infinity);
+            if (a === 0 && b === 0) return new c(0, Infinity);
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).acos() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).acos();
+            return d !== 0 ? new c(a / d, -b / d).acos() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).acos();
         },
         acsc: function() {
             const a = this.re, b = this.im;
-            if (0 === a && 0 === b) return new c(Math.PI / 2, Infinity);
+            if (a === 0 && b === 0) return new c(Math.PI / 2, Infinity);
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).asin() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).asin();
+            return d !== 0 ? new c(a / d, -b / d).asin() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).asin();
         },
         sinh: function() {
             const a = this.re, b = this.im;
@@ -12346,53 +12429,54 @@ Licensed under the MIT license.
             return new c(2 * h(a) * Math.cos(b) / d, -2 * k(a) * Math.sin(b) / d);
         },
         asinh: function() {
-            let a = this.im;
-            this.im = -this.re;
-            this.re = a;
-            const b = this.asin();
-            this.re = -this.im;
-            this.im = a;
-            a = b.re;
-            b.re = -b.im;
-            b.im = a;
-            return b;
+            const a = this.re;
+            var b = this.im;
+            if (b === 0) {
+                if (a === 0) return new c(0, 0);
+                b = Math.abs(a);
+                b = Math.log(b + Math.sqrt(b * b + 1));
+                return new c(a < 0 ? -b : b, 0);
+            }
+            const d = new c(a * a - b * b + 1, 2 * a * b).sqrt();
+            return new c(a + d.re, b + d.im).log();
         },
         acosh: function() {
-            const a = this.acos();
-            if (0 >= a.im) {
-                var b = a.re;
-                a.re = -a.im;
-                a.im = b;
-            } else b = a.im, a.im = -a.re, a.re = b;
-            return a;
+            const a = this.re, b = this.im;
+            if (b === 0) return a > 1 ? new c(Math.log(a + Math.sqrt(a - 1) * Math.sqrt(a + 1)), 0) : a < -1 ? new c(Math.log(-a + Math.sqrt(a * a - 1)), Math.PI) : new c(0, Math.acos(a));
+            const d = new c(a - 1, b).sqrt(), e = new c(a + 1, b).sqrt();
+            return new c(a + d.re * e.re - d.im * e.im, b + d.re * e.im + d.im * e.re).log();
         },
         atanh: function() {
             var a = this.re, b = this.im;
-            const d = 1 < a && 0 === b, e = 1 - a, g = 1 + a, q = e * e + b * b;
-            a = 0 !== q ? new c((g * e - b * b) / q, (b * e + g * b) / q) : new c(-1 !== a ? a / 0 : 0, 0 !== b ? b / 0 : 0);
-            b = a.re;
-            a.re = p(a.re, a.im) / 2;
-            a.im = Math.atan2(a.im, b) / 2;
-            d && (a.im = -a.im);
-            return a;
+            if (b === 0) return a === 0 ? new c(0, 0) : a === 1 ? new c(Infinity, 0) : a === -1 ? new c(-Infinity, 0) : -1 < a && a < 1 ? new c(.5 * Math.log((1 + a) / (1 - a)), 0) : a > 1 ? new c(.5 * Math.log((a + 1) / (a - 1)), -Math.PI / 2) : new c(.5 * Math.log(-((1 + a) / (1 - a))), Math.PI / 2);
+            const d = 1 - a, e = 1 + a, g = d * d + b * b;
+            if (g === 0) return new c(a !== -1 ? a / 0 : 0, b !== 0 ? b / 0 : 0);
+            a = (e * d - b * b) / g;
+            b = (b * d + e * b) / g;
+            return new c(p(a, b) / 2, Math.atan2(b, a) / 2);
         },
         acoth: function() {
             const a = this.re, b = this.im;
-            if (0 === a && 0 === b) return new c(0, Math.PI / 2);
+            if (a === 0 && b === 0) return new c(0, Math.PI / 2);
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).atanh() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).atanh();
+            return d !== 0 ? new c(a / d, -b / d).atanh() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).atanh();
         },
         acsch: function() {
-            const a = this.re, b = this.im;
-            if (0 === b) return new c(0 !== a ? Math.log(a + Math.sqrt(a * a + 1)) : Infinity, 0);
+            var a = this.re;
+            const b = this.im;
+            if (b === 0) {
+                if (a === 0) return new c(Infinity, 0);
+                a = 1 / a;
+                return new c(Math.log(a + Math.sqrt(a * a + 1)), 0);
+            }
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).asinh() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).asinh();
+            return d !== 0 ? new c(a / d, -b / d).asinh() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).asinh();
         },
         asech: function() {
             const a = this.re, b = this.im;
             if (this.isZero()) return c.INFINITY;
             const d = a * a + b * b;
-            return 0 !== d ? new c(a / d, -b / d).acosh() : new c(0 !== a ? a / 0 : 0, 0 !== b ? -b / 0 : 0).acosh();
+            return d !== 0 ? new c(a / d, -b / d).acosh() : new c(a !== 0 ? a / 0 : 0, b !== 0 ? -b / 0 : 0).acosh();
         },
         inverse: function() {
             if (this.isZero()) return c.INFINITY;
@@ -12431,8 +12515,8 @@ Licensed under the MIT license.
             if (this.isInfinite()) return "Infinity";
             Math.abs(a) < c.EPSILON && (a = 0);
             Math.abs(b) < c.EPSILON && (b = 0);
-            if (0 === b) return d + a;
-            0 !== a ? (d = d + a + " ", 0 > b ? (b = -b, d += "-") : d += "+", d += " ") : 0 > b && (b = -b, d += "-");
+            if (b === 0) return d + a;
+            a !== 0 ? (d = d + a + " ", b < 0 ? (b = -b, d += "-") : d += "+", d += " ") : b < 0 && (b = -b, d += "-");
             1 !== b && (d += b);
             return d + "i";
         },
@@ -12443,13 +12527,13 @@ Licensed under the MIT license.
             ];
         },
         valueOf: function() {
-            return 0 === this.im ? this.re : null;
+            return this.im === 0 ? this.re : null;
         },
         isNaN: function() {
             return isNaN(this.re) || isNaN(this.im);
         },
         isZero: function() {
-            return 0 === this.im && 0 === this.re;
+            return this.im === 0 && this.re === 0;
         },
         isFinite: function() {
             return isFinite(this.re) && isFinite(this.im);
@@ -12466,7 +12550,7 @@ Licensed under the MIT license.
     c.INFINITY = new c(Infinity, Infinity);
     c.NAN = new c(NaN, NaN);
     c.EPSILON = 1E-15;
-    "function" === typeof define && define.amd ? define([], function() {
+    typeof define === "function" && define.amd ? define([], function() {
         return c;
     }) : (Object.defineProperty(c, "__esModule", {
         value: !0
@@ -59932,7 +60016,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     // Nodejs and AMD support: export the implementation as a module using
     // either convention.
     //
-    if (0, module.exports) {
+    if (module.exports) {
         module.exports = seedrandom;
         // When in node.js, try using crypto package for autoseeding.
         try {
@@ -74526,7 +74610,7 @@ function importFactory(typed, load, math, importedFactories) {
 
 },{"../../utils/is.js":"kFN09","../../utils/factory.js":"kUz6I","../../utils/object.js":"5voQz","../../utils/array.js":"gMTeV","../../error/ArgumentsError.js":"8wK5y","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"6U2cz":[function(require,module,exports,__globalThis) {
 /*!
- * Chart.js v4.4.9
+ * Chart.js v4.5.1
  * https://www.chartjs.org
  * (c) 2025 Chart.js Contributors
  * Released under the MIT License
@@ -75913,6 +75997,20 @@ class BarController extends DatasetController {
     _getStackCount(index) {
         return this._getStacks(undefined, index).length;
     }
+    _getAxisCount() {
+        return this._getAxis().length;
+    }
+    getFirstScaleIdForIndexAxis() {
+        const scales = this.chart.scales;
+        const indexScaleId = this.chart.options.indexAxis;
+        return Object.keys(scales).filter((key)=>scales[key].axis === indexScaleId).shift();
+    }
+    _getAxis() {
+        const axis = {};
+        const firstScaleAxisId = this.getFirstScaleIdForIndexAxis();
+        for (const dataset of this.chart.data.datasets)axis[(0, _helpersDatasetJs.v)(this.chart.options.indexAxis === 'x' ? dataset.xAxisID : dataset.yAxisID, firstScaleAxisId)] = true;
+        return Object.keys(axis);
+    }
     _getStackIndex(datasetIndex, name, dataIndex) {
         const stacks = this._getStacks(datasetIndex, dataIndex);
         const index = name !== undefined ? stacks.indexOf(name) : -1;
@@ -75992,10 +76090,13 @@ class BarController extends DatasetController {
         const skipNull = options.skipNull;
         const maxBarThickness = (0, _helpersDatasetJs.v)(options.maxBarThickness, Infinity);
         let center, size;
+        const axisCount = this._getAxisCount();
         if (ruler.grouped) {
             const stackCount = skipNull ? this._getStackCount(index) : ruler.stackCount;
-            const range = options.barThickness === 'flex' ? computeFlexCategoryTraits(index, ruler, options, stackCount) : computeFitCategoryTraits(index, ruler, options, stackCount);
-            const stackIndex = this._getStackIndex(this.index, this._cachedMeta.stack, skipNull ? index : undefined);
+            const range = options.barThickness === 'flex' ? computeFlexCategoryTraits(index, ruler, options, stackCount * axisCount) : computeFitCategoryTraits(index, ruler, options, stackCount * axisCount);
+            const axisID = this.chart.options.indexAxis === 'x' ? this.getDataset().xAxisID : this.getDataset().yAxisID;
+            const axisNumber = this._getAxis().indexOf((0, _helpersDatasetJs.v)(axisID, this.getFirstScaleIdForIndexAxis()));
+            const stackIndex = this._getStackIndex(this.index, this._cachedMeta.stack, skipNull ? index : undefined) + axisNumber;
             center = range.start + range.chunk * stackIndex + range.chunk / 2;
             size = Math.min(maxBarThickness, range.chunk * range.ratio);
         } else {
@@ -76199,23 +76300,26 @@ class DoughnutController extends DatasetController {
                 labels: {
                     generateLabels (chart) {
                         const data = chart.data;
-                        if (data.labels.length && data.datasets.length) {
-                            const { labels: { pointStyle, color } } = chart.legend.options;
-                            return data.labels.map((label, i)=>{
-                                const meta = chart.getDatasetMeta(0);
-                                const style = meta.controller.getStyle(i);
-                                return {
-                                    text: label,
-                                    fillStyle: style.backgroundColor,
-                                    strokeStyle: style.borderColor,
-                                    fontColor: color,
-                                    lineWidth: style.borderWidth,
-                                    pointStyle: pointStyle,
-                                    hidden: !chart.getDataVisibility(i),
-                                    index: i
-                                };
-                            });
-                        }
+                        const { labels: { pointStyle, textAlign, color, useBorderRadius, borderRadius } } = chart.legend.options;
+                        if (data.labels.length && data.datasets.length) return data.labels.map((label, i)=>{
+                            const meta = chart.getDatasetMeta(0);
+                            const style = meta.controller.getStyle(i);
+                            return {
+                                text: label,
+                                fillStyle: style.backgroundColor,
+                                fontColor: color,
+                                hidden: !chart.getDataVisibility(i),
+                                lineDash: style.borderDash,
+                                lineDashOffset: style.borderDashOffset,
+                                lineJoin: style.borderJoinStyle,
+                                lineWidth: style.borderWidth,
+                                strokeStyle: style.borderColor,
+                                textAlign: textAlign,
+                                pointStyle: pointStyle,
+                                borderRadius: useBorderRadius && (borderRadius || style.borderRadius),
+                                index: i
+                            };
+                        });
                         return [];
                     }
                 },
@@ -79102,18 +79206,20 @@ class Registry {
 var registry = /* #__PURE__ */ new Registry();
 class PluginService {
     constructor(){
-        this._init = [];
+        this._init = undefined;
     }
     notify(chart, hook, args, filter) {
         if (hook === 'beforeInit') {
             this._init = this._createDescriptors(chart, true);
             this._notify(this._init, chart, 'install');
         }
+        if (this._init === undefined) return;
         const descriptors = filter ? this._descriptors(chart).filter(filter) : this._descriptors(chart);
         const result = this._notify(descriptors, chart, hook, args);
         if (hook === 'afterDestroy') {
             this._notify(descriptors, chart, 'stop');
             this._notify(this._init, chart, 'uninstall');
+            this._init = undefined;
         }
         return result;
     }
@@ -79507,7 +79613,7 @@ function needContext(proxy, names) {
     }
     return false;
 }
-var version = "4.4.9";
+var version = "4.5.1";
 const KNOWN_POSITIONS = [
     'top',
     'bottom',
@@ -80272,6 +80378,33 @@ class Chart {
 function invalidatePlugins() {
     return (0, _helpersDatasetJs.F)(Chart.instances, (chart)=>chart._plugins.invalidate());
 }
+function clipSelf(ctx, element, endAngle) {
+    const { startAngle, x, y, outerRadius, innerRadius, options } = element;
+    const { borderWidth, borderJoinStyle } = options;
+    const outerAngleClip = Math.min(borderWidth / outerRadius, (0, _helpersDatasetJs.al)(startAngle - endAngle));
+    ctx.beginPath();
+    ctx.arc(x, y, outerRadius - borderWidth / 2, startAngle + outerAngleClip / 2, endAngle - outerAngleClip / 2);
+    if (innerRadius > 0) {
+        const innerAngleClip = Math.min(borderWidth / innerRadius, (0, _helpersDatasetJs.al)(startAngle - endAngle));
+        ctx.arc(x, y, innerRadius + borderWidth / 2, endAngle - innerAngleClip / 2, startAngle + innerAngleClip / 2, true);
+    } else {
+        const clipWidth = Math.min(borderWidth / 2, outerRadius * (0, _helpersDatasetJs.al)(startAngle - endAngle));
+        if (borderJoinStyle === 'round') ctx.arc(x, y, clipWidth, endAngle - (0, _helpersDatasetJs.P) / 2, startAngle + (0, _helpersDatasetJs.P) / 2, true);
+        else if (borderJoinStyle === 'bevel') {
+            const r = 2 * clipWidth * clipWidth;
+            const endX = -r * Math.cos(endAngle + (0, _helpersDatasetJs.P) / 2) + x;
+            const endY = -r * Math.sin(endAngle + (0, _helpersDatasetJs.P) / 2) + y;
+            const startX = r * Math.cos(startAngle + (0, _helpersDatasetJs.P) / 2) + x;
+            const startY = r * Math.sin(startAngle + (0, _helpersDatasetJs.P) / 2) + y;
+            ctx.lineTo(endX, endY);
+            ctx.lineTo(startX, startY);
+        }
+    }
+    ctx.closePath();
+    ctx.moveTo(0, 0);
+    ctx.rect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.clip('evenodd');
+}
 function clipArc(ctx, element, endAngle) {
     const { startAngle, pixelMargin, x, y, outerRadius, innerRadius } = element;
     let angleMargin = pixelMargin / outerRadius;
@@ -80287,7 +80420,7 @@ function clipArc(ctx, element, endAngle) {
     ctx.clip();
 }
 function toRadiusCorners(value) {
-    return (0, _helpersDatasetJs.al)(value, [
+    return (0, _helpersDatasetJs.am)(value, [
         'outerStart',
         'outerEnd',
         'innerStart',
@@ -80429,7 +80562,7 @@ function drawArc(ctx, element, offset, spacing, circular) {
 }
 function drawBorder(ctx, element, offset, spacing, circular) {
     const { fullCircles, startAngle, circumference, options } = element;
-    const { borderWidth, borderJoinStyle, borderDash, borderDashOffset } = options;
+    const { borderWidth, borderJoinStyle, borderDash, borderDashOffset, borderRadius } = options;
     const inner = options.borderAlign === 'inner';
     if (!borderWidth) return;
     ctx.setLineDash(borderDash || []);
@@ -80448,6 +80581,7 @@ function drawBorder(ctx, element, offset, spacing, circular) {
         if (!isNaN(circumference)) endAngle = startAngle + (circumference % (0, _helpersDatasetJs.T) || (0, _helpersDatasetJs.T));
     }
     if (inner) clipArc(ctx, element, endAngle);
+    if (options.selfJoin && endAngle - startAngle >= (0, _helpersDatasetJs.P) && borderRadius === 0 && borderJoinStyle !== 'miter') clipSelf(ctx, element, endAngle);
     if (!fullCircles) {
         pathArc(ctx, element, offset, spacing, endAngle, circular);
         ctx.stroke();
@@ -80466,7 +80600,8 @@ class ArcElement extends Element {
         offset: 0,
         spacing: 0,
         angle: undefined,
-        circular: true
+        circular: true,
+        selfJoin: false
     };
     static defaultRoutes = {
         backgroundColor: 'backgroundColor'
@@ -80569,8 +80704,8 @@ function lineTo(ctx, previous, target) {
     ctx.lineTo(target.x, target.y);
 }
 function getLineMethod(options) {
-    if (options.stepped) return 0, _helpersDatasetJs.as;
-    if (options.tension || options.cubicInterpolationMode === 'monotone') return 0, _helpersDatasetJs.at;
+    if (options.stepped) return 0, _helpersDatasetJs.at;
+    if (options.tension || options.cubicInterpolationMode === 'monotone') return 0, _helpersDatasetJs.au;
     return lineTo;
 }
 function pathVars(points, segment, params = {}) {
@@ -80655,9 +80790,9 @@ function _getSegmentMethod(line) {
     return useFastPath ? fastPathSegment : pathSegment;
 }
 function _getInterpolationMethod(options) {
-    if (options.stepped) return 0, _helpersDatasetJs.ap;
-    if (options.tension || options.cubicInterpolationMode === 'monotone') return 0, _helpersDatasetJs.aq;
-    return 0, _helpersDatasetJs.ar;
+    if (options.stepped) return 0, _helpersDatasetJs.aq;
+    if (options.tension || options.cubicInterpolationMode === 'monotone') return 0, _helpersDatasetJs.ar;
+    return 0, _helpersDatasetJs.as;
 }
 function strokePathWithCache(ctx, line, start, count) {
     let path = line._path;
@@ -80728,7 +80863,7 @@ class LineElement extends Element {
         const options = this.options;
         if ((options.tension || options.cubicInterpolationMode === 'monotone') && !options.stepped && !this._pointsUpdated) {
             const loop = options.spanGaps ? this._loop : this._fullLoop;
-            (0, _helpersDatasetJs.am)(this._points, options, chartArea, loop, indexAxis);
+            (0, _helpersDatasetJs.an)(this._points, options, chartArea, loop, indexAxis);
             this._pointsUpdated = true;
         }
     }
@@ -80742,7 +80877,7 @@ class LineElement extends Element {
         return this._points;
     }
     get segments() {
-        return this._segments || (this._segments = (0, _helpersDatasetJs.an)(this, this.options.segment));
+        return this._segments || (this._segments = (0, _helpersDatasetJs.ao)(this, this.options.segment));
     }
     first() {
         const segments = this.segments;
@@ -80759,7 +80894,7 @@ class LineElement extends Element {
         const options = this.options;
         const value = point[property];
         const points = this.points;
-        const segments = (0, _helpersDatasetJs.ao)(this, {
+        const segments = (0, _helpersDatasetJs.ap)(this, {
             property,
             start: value,
             end: value
@@ -80887,7 +81022,7 @@ class PointElement extends Element {
         ctx.strokeStyle = options.borderColor;
         ctx.lineWidth = options.borderWidth;
         ctx.fillStyle = options.backgroundColor;
-        (0, _helpersDatasetJs.au)(ctx, options, this.x, this.y);
+        (0, _helpersDatasetJs.av)(ctx, options, this.x, this.y);
     }
     getRange() {
         const options = this.options || {};
@@ -80930,7 +81065,7 @@ function skipOrLimit(skip, value, min, max) {
 function parseBorderWidth(bar, maxW, maxH) {
     const value = bar.options.borderWidth;
     const skip = bar.borderSkipped;
-    const o = (0, _helpersDatasetJs.aw)(value);
+    const o = (0, _helpersDatasetJs.ax)(value);
     return {
         t: skipOrLimit(skip.top, o.top, 0, maxH),
         r: skipOrLimit(skip.right, o.right, 0, maxW),
@@ -80943,7 +81078,7 @@ function parseBorderRadius(bar, maxW, maxH) {
         'enableBorderRadius'
     ]);
     const value = bar.options.borderRadius;
-    const o = (0, _helpersDatasetJs.ax)(value);
+    const o = (0, _helpersDatasetJs.ay)(value);
     const maxR = Math.min(maxW, maxH);
     const skip = bar.borderSkipped;
     const enableBorder = enableBorderRadius || (0, _helpersDatasetJs.i)(value);
@@ -81034,7 +81169,7 @@ class BarElement extends Element {
     draw(ctx) {
         const { inflateAmount, options: { borderColor, backgroundColor } } = this;
         const { inner, outer } = boundingRects(this);
-        const addRectPath = hasRadius(outer.radius) ? (0, _helpersDatasetJs.av) : addNormalRectPath;
+        const addRectPath = hasRadius(outer.radius) ? (0, _helpersDatasetJs.aw) : addNormalRectPath;
         ctx.save();
         if (outer.w !== inner.w || outer.h !== inner.h) {
             ctx.beginPath();
@@ -81350,10 +81485,10 @@ function _segments(line, target, property) {
             });
             continue;
         }
-        const targetSegments = (0, _helpersDatasetJs.ao)(target, bounds);
+        const targetSegments = (0, _helpersDatasetJs.ap)(target, bounds);
         for (const tgt of targetSegments){
             const subBounds = _getBounds(property, tpoints[tgt.start], tpoints[tgt.end], tgt.loop);
-            const fillSources = (0, _helpersDatasetJs.ay)(segment, points, subBounds);
+            const fillSources = (0, _helpersDatasetJs.az)(segment, points, subBounds);
             for (const fillSource of fillSources)parts.push({
                 source: fillSource,
                 target: tgt,
@@ -81373,8 +81508,8 @@ function _getBounds(property, first, last, loop) {
     let start = first[property];
     let end = last[property];
     if (property === 'angle') {
-        start = (0, _helpersDatasetJs.az)(start);
-        end = (0, _helpersDatasetJs.az)(end);
+        start = (0, _helpersDatasetJs.al)(start);
+        end = (0, _helpersDatasetJs.al)(end);
     }
     return {
         property,
@@ -81672,24 +81807,41 @@ function doFill(ctx, cfg) {
     const { line, target, above, below, area, scale, clip } = cfg;
     const property = line._loop ? 'angle' : cfg.axis;
     ctx.save();
-    if (property === 'x' && below !== above) {
-        clipVertical(ctx, target, area.top);
-        fill(ctx, {
-            line,
-            target,
-            color: above,
-            scale,
-            property,
-            clip
-        });
-        ctx.restore();
-        ctx.save();
-        clipVertical(ctx, target, area.bottom);
+    let fillColor = below;
+    if (below !== above) {
+        if (property === 'x') {
+            clipVertical(ctx, target, area.top);
+            fill(ctx, {
+                line,
+                target,
+                color: above,
+                scale,
+                property,
+                clip
+            });
+            ctx.restore();
+            ctx.save();
+            clipVertical(ctx, target, area.bottom);
+        } else if (property === 'y') {
+            clipHorizontal(ctx, target, area.left);
+            fill(ctx, {
+                line,
+                target,
+                color: below,
+                scale,
+                property,
+                clip
+            });
+            ctx.restore();
+            ctx.save();
+            clipHorizontal(ctx, target, area.right);
+            fillColor = above;
+        }
     }
     fill(ctx, {
         line,
         target,
-        color: below,
+        color: fillColor,
         scale,
         property,
         clip
@@ -81719,6 +81871,32 @@ function clipVertical(ctx, target, clipY) {
         else ctx.lineTo(lastPoint.x, clipY);
     }
     ctx.lineTo(target.first().x, clipY);
+    ctx.closePath();
+    ctx.clip();
+}
+function clipHorizontal(ctx, target, clipX) {
+    const { segments, points } = target;
+    let first = true;
+    let lineLoop = false;
+    ctx.beginPath();
+    for (const segment of segments){
+        const { start, end } = segment;
+        const firstPoint = points[start];
+        const lastPoint = points[_findSegmentEnd(start, end, points)];
+        if (first) {
+            ctx.moveTo(firstPoint.x, firstPoint.y);
+            first = false;
+        } else {
+            ctx.lineTo(clipX, firstPoint.y);
+            ctx.lineTo(firstPoint.x, firstPoint.y);
+        }
+        lineLoop = !!target.pathSegment(ctx, segment, {
+            move: lineLoop
+        });
+        if (lineLoop) ctx.closePath();
+        else ctx.lineTo(clipX, lastPoint.y);
+    }
+    ctx.lineTo(clipX, target.first().y);
     ctx.closePath();
     ctx.clip();
 }
@@ -82081,9 +82259,9 @@ class Legend extends Element {
             } else {
                 const yBoxTop = y + Math.max((fontSize - boxHeight) / 2, 0);
                 const xBoxLeft = rtlHelper.leftForLtr(x, boxWidth);
-                const borderRadius = (0, _helpersDatasetJs.ax)(legendItem.borderRadius);
+                const borderRadius = (0, _helpersDatasetJs.ay)(legendItem.borderRadius);
                 ctx.beginPath();
-                if (Object.values(borderRadius).some((v)=>v !== 0)) (0, _helpersDatasetJs.av)(ctx, {
+                if (Object.values(borderRadius).some((v)=>v !== 0)) (0, _helpersDatasetJs.aw)(ctx, {
                     x: xBoxLeft,
                     y: yBoxTop,
                     w: boxWidth,
@@ -82690,7 +82868,7 @@ function getBackgroundPoint(options, size, alignment, chart) {
     const { caretSize, caretPadding, cornerRadius } = options;
     const { xAlign, yAlign } = alignment;
     const paddingAndSize = caretSize + caretPadding;
-    const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ax)(cornerRadius);
+    const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ay)(cornerRadius);
     let x = alignX(size, xAlign);
     const y = alignY(size, yAlign, paddingAndSize);
     if (yAlign === 'center') {
@@ -82948,7 +83126,7 @@ class Tooltip extends Element {
     getCaretPosition(tooltipPoint, size, options) {
         const { xAlign, yAlign } = this;
         const { caretSize, cornerRadius } = options;
-        const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ax)(cornerRadius);
+        const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ay)(cornerRadius);
         const { x: ptX, y: ptY } = tooltipPoint;
         const { width, height } = size;
         let x1, x2, x3, y1, y2, y3;
@@ -83032,10 +83210,10 @@ class Tooltip extends Element {
             const centerY = colorY + boxHeight / 2;
             ctx.strokeStyle = options.multiKeyBackground;
             ctx.fillStyle = options.multiKeyBackground;
-            (0, _helpersDatasetJs.au)(ctx, drawOptions, centerX, centerY);
+            (0, _helpersDatasetJs.av)(ctx, drawOptions, centerX, centerY);
             ctx.strokeStyle = labelColor.borderColor;
             ctx.fillStyle = labelColor.backgroundColor;
-            (0, _helpersDatasetJs.au)(ctx, drawOptions, centerX, centerY);
+            (0, _helpersDatasetJs.av)(ctx, drawOptions, centerX, centerY);
         } else {
             ctx.lineWidth = (0, _helpersDatasetJs.i)(labelColor.borderWidth) ? Math.max(...Object.values(labelColor.borderWidth)) : labelColor.borderWidth || 1;
             ctx.strokeStyle = labelColor.borderColor;
@@ -83043,11 +83221,11 @@ class Tooltip extends Element {
             ctx.lineDashOffset = labelColor.borderDashOffset || 0;
             const outerX = rtlHelper.leftForLtr(rtlColorX, boxWidth);
             const innerX = rtlHelper.leftForLtr(rtlHelper.xPlus(rtlColorX, 1), boxWidth - 2);
-            const borderRadius = (0, _helpersDatasetJs.ax)(labelColor.borderRadius);
+            const borderRadius = (0, _helpersDatasetJs.ay)(labelColor.borderRadius);
             if (Object.values(borderRadius).some((v)=>v !== 0)) {
                 ctx.beginPath();
                 ctx.fillStyle = options.multiKeyBackground;
-                (0, _helpersDatasetJs.av)(ctx, {
+                (0, _helpersDatasetJs.aw)(ctx, {
                     x: outerX,
                     y: colorY,
                     w: boxWidth,
@@ -83058,7 +83236,7 @@ class Tooltip extends Element {
                 ctx.stroke();
                 ctx.fillStyle = labelColor.backgroundColor;
                 ctx.beginPath();
-                (0, _helpersDatasetJs.av)(ctx, {
+                (0, _helpersDatasetJs.aw)(ctx, {
                     x: innerX,
                     y: colorY + 1,
                     w: boxWidth - 2,
@@ -83140,7 +83318,7 @@ class Tooltip extends Element {
         const { xAlign, yAlign } = this;
         const { x, y } = pt;
         const { width, height } = tooltipSize;
-        const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ax)(options.cornerRadius);
+        const { topLeft, topRight, bottomLeft, bottomRight } = (0, _helpersDatasetJs.ay)(options.cornerRadius);
         ctx.fillStyle = options.backgroundColor;
         ctx.strokeStyle = options.borderColor;
         ctx.lineWidth = options.borderWidth;
@@ -83912,7 +84090,7 @@ function fitWithPointLabels(scale) {
         const plFont = (0, _helpersDatasetJs.a0)(opts.font);
         const textSize = measureLabelSize(scale.ctx, plFont, scale._pointLabels[i]);
         labelSizes[i] = textSize;
-        const angleRadians = (0, _helpersDatasetJs.az)(scale.getIndexAngle(i) + additionalAngle);
+        const angleRadians = (0, _helpersDatasetJs.al)(scale.getIndexAngle(i) + additionalAngle);
         const angle = Math.round((0, _helpersDatasetJs.U)(angleRadians));
         const hLimits = determineLimits(angle, pointPosition.x, textSize.w, 0, 180);
         const vLimits = determineLimits(angle, pointPosition.y, textSize.h, 90, 270);
@@ -83945,7 +84123,7 @@ function createPointLabelItem(scale, index, itemOpts) {
     const outerDistance = scale.drawingArea;
     const { extra, additionalAngle, padding, size } = itemOpts;
     const pointLabelPosition = scale.getPointPosition(index, outerDistance + extra + padding, additionalAngle);
-    const angle = Math.round((0, _helpersDatasetJs.U)((0, _helpersDatasetJs.az)(pointLabelPosition.angle + (0, _helpersDatasetJs.H))));
+    const angle = Math.round((0, _helpersDatasetJs.U)((0, _helpersDatasetJs.al)(pointLabelPosition.angle + (0, _helpersDatasetJs.H))));
     const y = yForAngle(pointLabelPosition.y, size.h, angle);
     const textAlign = getTextAlignForAngle(angle);
     const left = leftForTextAlign(pointLabelPosition.x, size.w, textAlign);
@@ -84019,7 +84197,7 @@ function drawPointLabelBox(ctx, opts, item) {
     const { left, top, right, bottom } = item;
     const { backdropColor } = opts;
     if (!(0, _helpersDatasetJs.k)(backdropColor)) {
-        const borderRadius = (0, _helpersDatasetJs.ax)(opts.borderRadius);
+        const borderRadius = (0, _helpersDatasetJs.ay)(opts.borderRadius);
         const padding = (0, _helpersDatasetJs.E)(opts.backdropPadding);
         ctx.fillStyle = backdropColor;
         const backdropLeft = left - padding.left;
@@ -84028,7 +84206,7 @@ function drawPointLabelBox(ctx, opts, item) {
         const backdropHeight = bottom - top + padding.height;
         if (Object.values(borderRadius).some((v)=>v !== 0)) {
             ctx.beginPath();
-            (0, _helpersDatasetJs.av)(ctx, {
+            (0, _helpersDatasetJs.aw)(ctx, {
                 x: backdropLeft,
                 y: backdropTop,
                 w: backdropWidth,
@@ -84182,7 +84360,7 @@ class RadialLinearScale extends LinearScaleBase {
     getIndexAngle(index) {
         const angleMultiplier = (0, _helpersDatasetJs.T) / (this._pointLabels.length || 1);
         const startAngle = this.options.startAngle || 0;
-        return (0, _helpersDatasetJs.az)(index * angleMultiplier + (0, _helpersDatasetJs.t)(startAngle));
+        return (0, _helpersDatasetJs.al)(index * angleMultiplier + (0, _helpersDatasetJs.t)(startAngle));
     }
     getDistanceFromCenterForValue(value) {
         if ((0, _helpersDatasetJs.k)(value)) return NaN;
@@ -84779,7 +84957,7 @@ const registerables = [
 
 },{"./chunks/helpers.dataset.js":"jgtl4","@kurkle/color":"jkZGG","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"jgtl4":[function(require,module,exports,__globalThis) {
 /*!
- * Chart.js v4.4.9
+ * Chart.js v4.5.1
  * https://www.chartjs.org
  * (c) 2025 Chart.js Contributors
  * Released under the MIT License
@@ -84863,21 +85041,21 @@ parcelHelpers.export(exports, "ah", ()=>getDatasetClipArea);
 parcelHelpers.export(exports, "ai", ()=>_elementsEqual);
 parcelHelpers.export(exports, "aj", ()=>_isClickEvent);
 parcelHelpers.export(exports, "ak", ()=>_isBetween);
-parcelHelpers.export(exports, "al", ()=>_readValueToProps);
-parcelHelpers.export(exports, "am", ()=>_updateBezierControlPoints);
-parcelHelpers.export(exports, "an", ()=>_computeSegments);
-parcelHelpers.export(exports, "ao", ()=>_boundSegments);
-parcelHelpers.export(exports, "ap", ()=>_steppedInterpolation);
-parcelHelpers.export(exports, "aq", ()=>_bezierInterpolation);
-parcelHelpers.export(exports, "ar", ()=>_pointInLine);
-parcelHelpers.export(exports, "as", ()=>_steppedLineTo);
-parcelHelpers.export(exports, "at", ()=>_bezierCurveTo);
-parcelHelpers.export(exports, "au", ()=>drawPoint);
-parcelHelpers.export(exports, "av", ()=>addRoundedRectPath);
-parcelHelpers.export(exports, "aw", ()=>toTRBL);
-parcelHelpers.export(exports, "ax", ()=>toTRBLCorners);
-parcelHelpers.export(exports, "ay", ()=>_boundSegment);
-parcelHelpers.export(exports, "az", ()=>_normalizeAngle);
+parcelHelpers.export(exports, "al", ()=>_normalizeAngle);
+parcelHelpers.export(exports, "am", ()=>_readValueToProps);
+parcelHelpers.export(exports, "an", ()=>_updateBezierControlPoints);
+parcelHelpers.export(exports, "ao", ()=>_computeSegments);
+parcelHelpers.export(exports, "ap", ()=>_boundSegments);
+parcelHelpers.export(exports, "aq", ()=>_steppedInterpolation);
+parcelHelpers.export(exports, "ar", ()=>_bezierInterpolation);
+parcelHelpers.export(exports, "as", ()=>_pointInLine);
+parcelHelpers.export(exports, "at", ()=>_steppedLineTo);
+parcelHelpers.export(exports, "au", ()=>_bezierCurveTo);
+parcelHelpers.export(exports, "av", ()=>drawPoint);
+parcelHelpers.export(exports, "aw", ()=>addRoundedRectPath);
+parcelHelpers.export(exports, "ax", ()=>toTRBL);
+parcelHelpers.export(exports, "ay", ()=>toTRBLCorners);
+parcelHelpers.export(exports, "az", ()=>_boundSegment);
 parcelHelpers.export(exports, "b", ()=>isArray);
 parcelHelpers.export(exports, "b0", ()=>fontString);
 parcelHelpers.export(exports, "b1", ()=>toLineHeight);
@@ -86976,10 +87154,10 @@ function getMaximumSize(canvas, bbWidth, bbHeight, aspectRatio) {
  * @returns True if the canvas context size or transformation has changed.
  */ function retinaScale(chart, forceRatio, forceStyle) {
     const pixelRatio = forceRatio || 1;
-    const deviceHeight = Math.floor(chart.height * pixelRatio);
-    const deviceWidth = Math.floor(chart.width * pixelRatio);
-    chart.height = Math.floor(chart.height);
-    chart.width = Math.floor(chart.width);
+    const deviceHeight = round1(chart.height * pixelRatio);
+    const deviceWidth = round1(chart.width * pixelRatio);
+    chart.height = round1(chart.height);
+    chart.width = round1(chart.width);
     const canvas = chart.canvas;
     // If no style has been set on the canvas, the render size is used as display size,
     // making the chart visually bigger, so let's enforce it to the "correct" values.
